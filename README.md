@@ -5,30 +5,29 @@
 ## 專案結構
 ```
 .
-├── data/
-│   ├── finance/        # 金融文件語料庫
-│   └── faq/           # FAQ文件語料庫
-├── src/
-│   ├── finance_retrieval.py    # 金融文件檢索實現
-│   ├── faq_retrieval.py        # FAQ檢索實現
-│   ├── pdf_extractor.py        # PDF文字提取工具
-│   └── insurance_query.py      # 保險專用查詢處理
+├── Model/
+│   ├── insurance.py/      # 金融文件語料庫
+│   ├── finance.py/        # 金融文件語料庫
+│   └── faq.py/            # FAQ文件語料庫
+├── Preprocess/
+│   └── ocr.py             # PDF預處理
 ├── requirements.txt
 └── README.md
 ```
 
 ## 檔案說明
 
-### 源碼檔案
+### 程式碼
 
-- `finance_retrieval.py`: 實現基於關鍵字和嵌入的金融文件檢索
-- `faq_retrieval.py`: 使用E5嵌入實現FAQ文件的語義檢索
-- `pdf_extractor.py`: 提供PDF文件文字提取工具，包括OCR功能
-- `insurance_query.py`: 實現保險專用查詢處理，包含同義詞和BM25檢索
+- `insurance.py`: 實現保險專用查詢處理，包含同義詞和BM25檢索
+- `finance.py`: 實現基於關鍵字和嵌入的金融文件檢索
+- `faq.py`: 使用E5嵌入實現FAQ文件的語義檢索
+- `ocr.py`: 提供PDF文件文字提取工具，包括OCR功能
+
 
 ## 安裝與設置
 
-1. 安裝所需依賴：
+1. 安裝所需套件：
 ```bash
 pip install -r requirements.txt
 ```
@@ -73,14 +72,20 @@ export TESSERACT_PATH="/usr/bin/tesseract"  # Linux/macOS
 ## 使用示例
 
 ```python
+# 保險文件檢索
+python Model/insurance.py \
+    --question_path 問題檔案路徑/questions.json \
+    --source_path 源文件路徑/source/docs \
+    --output_path 輸出路徑/output.json
+
 # 金融文件檢索
-python src/finance_retrieval.py \
+python Model/finance.py \
     --question_path 問題檔案路徑/questions.json \
     --source_path 源文件路徑/source/docs \
     --output_path 輸出路徑/output.json
 
 # FAQ檢索
-python src/faq_retrieval.py \
+python Model/faq_retrieval.py \
     --question_path 問題檔案路徑/questions.json \
     --source_path 源文件路徑/source/docs \
     --output_path 輸出路徑/output.json
