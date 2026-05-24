@@ -1,123 +1,115 @@
-import os
+import argparse
 import json
-from tqdm import tqdm
-import jieba  # 用於中文文本分詞
+import os
+import re
+
+import jieba
 import pdfplumber
 from rank_bm25 import BM25Okapi
-import re
+from tqdm import tqdm
 
 
 def expand_query(query):
-    # 示例：使用簡單的同義詞字典進行查詢擴展
-    synonyms = {
-        "保險": ["險", "保險產品", "投保"],
-        "理賠": ["賠償", "索賠"],
-        '貸款': ["借款", '信貸', '貸款協議'],
-        "財務報表": ["財報", "財務狀況表"],
-        "效力": ["效", "有效", "有效力"],
-        "要保": ["要保人"],
-        "被保": ["被保人"]
-    }
-
+    synonyms = {}
     expanded_query = set(jieba.lcut(query))
-    additional_terms = set()  # 新的集合來存儲擴展的詞
 
-    for word in expanded_query:
+    for word in list(expanded_query):
         if word in synonyms:
-            additional_terms.update(synonyms[word])  # 將同義詞添加到新的集合中
+            expanded_query.update(synonyms[word])
 
-    # 合併原查詢的詞和擴展的詞
-    expanded_query.update(additional_terms)
-    return ' '.join(expanded_query)
+    return " ".join(expanded_query)
 
 
-def load_data(source_path):
-    masked_file_ls = os.listdir(source_path)
-    corpus_dict = {int(file.replace('.pdf', '')): read_pdf(os.path.join(source_path, file)) for file in
-                   tqdm(masked_file_ls)}
-    return corpus_dict
-
-
-def read_pdf(pdf_loc, page_infos: list = None):
-    pdf = pdfplumber.open(pdf_loc)
-    pages = pdf.pages[page_infos[0]:page_infos[1]] if page_infos else pdf.pages
-    pdf_text = ''
-    for page in pages:
-        text = page.extract_text()
-        if text:
-            pdf_text += text
-    pdf.close()
+def read_pdf(pdf_loc, page_infos=None):
+    with pdfplumber.open(pdf_loc) as pdf:
+        pages = pdf.pages[page_infos[0]:page_infos[1]] if page_infos else pdf.pages
+        pdf_text = ""
+        for page in pages:
+            text = page.extract_text()
+            if text:
+                pdf_text += text
     return pdf_text
 
 
+def load_data(source_path):
+    file_names = [file_name for file_name in os.listdir(source_path) if file_name.lower().endswith(".pdf")]
+    corpus_dict = {}
+
+    for file_name in tqdm(file_names, desc="Loading insurance PDFs"):
+        file_id = int(file_name.replace(".pdf", ""))
+        corpus_dict[file_id] = read_pdf(os.path.join(source_path, file_name))
+
+    return corpus_dict
+
+
 def split_text_into_chunks(text, max_chunk_size=200):
-    # 將文本按標點符號分割，並進行分段
-    sentences = re.split(r'[，。\n]', text)
+    sentences = re.split(r"[。！？\n]", text)
     chunks = []
     current_chunk = ""
 
     for sentence in sentences:
-        # 如果當前段落加上新的句子超過最大長度，則保存當前段落並重新初始化
         if len(current_chunk) + len(sentence) > max_chunk_size:
-            chunks.append(current_chunk.strip())
+            if current_chunk.strip():
+                chunks.append(current_chunk.strip())
             current_chunk = ""
         current_chunk += sentence
 
-    # 加入最後的 chunk
-    if current_chunk:
+    if current_chunk.strip():
         chunks.append(current_chunk.strip())
 
-    return chunks  # 回傳list
+    return chunks
 
 
-def BM25_retrieve(qs, source, corpus_dict):
-    # 過濾出符合條件的文檔
-    filtered_corpus = [corpus_dict[int(file)] for file in source]
-    # 分段並分詞
-    all_chunks = []  # 所有文檔的分段集合
-    chunk_to_doc_map = []  # 用於記錄每個 chunk 對應的文檔 ID
+def bm25_retrieve(query, source, corpus_dict):
+    filtered_corpus = [corpus_dict[int(file)] for file in source if int(file) in corpus_dict]
+    if not filtered_corpus:
+        return int(source[0])
+
+    all_chunks = []
+    chunk_to_doc_map = []
+
     for idx, doc in enumerate(filtered_corpus):
-        chunks = split_text_into_chunks(doc)  # 將文檔切割為 chunks
-        tokenized_chunks = [list(jieba.cut_for_search(chunk)) for chunk in chunks]  # 將每個 chunk 分詞
-        all_chunks.extend(tokenized_chunks)  # 將所有分詞後的 chunk 加入集合
-        chunk_to_doc_map.extend([source[idx]] * len(tokenized_chunks))  # 記錄每個 chunk 的來源文檔
+        chunks = split_text_into_chunks(doc)
+        tokenized_chunks = [list(jieba.cut_for_search(chunk)) for chunk in chunks]
+        all_chunks.extend(tokenized_chunks)
+        chunk_to_doc_map.extend([source[idx]] * len(tokenized_chunks))
 
-    # 使用 BM25 建立檢索模型
+    if not all_chunks:
+        return int(source[0])
+
     bm25 = BM25Okapi(all_chunks)
-
-    # 對查詢進行分詞並檢索
-    tokenized_query = list(jieba.cut_for_search(qs))
-    ans = bm25.get_top_n(tokenized_query, all_chunks, n=1)  # 檢索最相關的分段（chunk）
-    best_chunk = ans[0]
-
-    # 找回與最佳匹配分段相對應的文檔
+    tokenized_query = list(jieba.cut_for_search(expand_query(query)))
+    best_chunk = bm25.get_top_n(tokenized_query, all_chunks, n=1)[0]
     best_chunk_index = all_chunks.index(best_chunk)
-    best_doc_id = chunk_to_doc_map[best_chunk_index]
-
-    return best_doc_id  # 回傳文檔 ID
+    return int(chunk_to_doc_map[best_chunk_index])
 
 
-# 主程式：加載問題並進行檢索
-print('load_model')
-answer_dict = {"answers": []}
+def process_queries(args):
+    with open(args.question_path, "r", encoding="utf-8") as file:
+        qs_ref = json.load(file)
 
-with open('dataset\preliminary\questions_preliminary.json', 'r', encoding='utf8') as f:
-    qs_ref = json.load(f)
+    source_path_insurance = os.path.join(args.source_path, "insurance")
+    corpus_dict_insurance = load_data(source_path_insurance)
+    answer_dict = {"answers": []}
 
-# 加載資料庫資料
-source_path_insurance = os.path.join('reference', 'insurance')
-corpus_dict_insurance = load_data(source_path_insurance)
+    for question in tqdm(qs_ref["questions"], desc="Processing insurance"):
+        if question.get("category") != "insurance":
+            continue
 
-# 搜尋問題
-for q_dict in qs_ref['questions']:
-    print(q_dict)
-    if q_dict['category'] == 'insurance':
-        retrieved = BM25_retrieve(q_dict['query'], q_dict['source'], corpus_dict_insurance)
-        answer_dict['answers'].append({"qid": q_dict['qid'], "retrieve": retrieved})
-        print('-' * 100)
-    else:
-        pass
+        retrieved = bm25_retrieve(question["query"], question["source"], corpus_dict_insurance)
+        answer_dict["answers"].append({"qid": question["qid"], "retrieve": retrieved})
 
-# 將答案字典保存為json文件
-with open('output_insurance.json', 'w', encoding='utf8') as f:
-    json.dump(answer_dict, f, ensure_ascii=False, indent=4)
+    output_dir = os.path.dirname(args.output_path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+
+    with open(args.output_path, "w", encoding="utf-8") as file:
+        json.dump(answer_dict, file, ensure_ascii=False, indent=4)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Insurance BM25 retrieval system")
+    parser.add_argument("--question_path", type=str, required=True, help="Path to question JSON file")
+    parser.add_argument("--source_path", type=str, required=True, help="Path to source documents")
+    parser.add_argument("--output_path", type=str, required=True, help="Output path for results JSON")
+    process_queries(parser.parse_args())

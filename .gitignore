@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.pkl
+*.log
+
+.env
+.env.*
+!.env.example
+
+query_log_with_e5.csv
+output*.json
+
+dataset/
+reference/
+source/
+data/

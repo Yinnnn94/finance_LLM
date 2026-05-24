@@ -1,107 +1,138 @@
-# finance_LLM
+# AI CUP Financial QA Retrieval System
 
-本專案實現了一個專門用於金融和保險相關查詢的文件檢索系統，運用了多種自然語言處理技術和嵌入模型。
+This repository contains a team competition project for financial document retrieval and question answering. The project was built for an AI CUP-style financial QA task, where the system needed to identify the most relevant source document for each question across financial, insurance, and FAQ datasets.
 
-## 專案結構
+The codebase is kept as a competition prototype rather than a production service. It demonstrates document preprocessing, OCR-assisted text extraction, retrieval logic, and embedding-based semantic matching for Chinese financial QA scenarios.
+
+## 中文摘要
+
+本專案為金融問答檢索競賽的團隊作品，目標是根據題目內容，從金融、保險與 FAQ 文件中找出最相關的來源文件。專案包含 PDF/OCR 前處理、BM25 關鍵字檢索、multilingual E5 embedding 語意檢索，以及不同資料類型的檢索策略。
+
+## Project Context
+
+- **Task:** Retrieve the most relevant source document for each financial QA question.
+- **Data types:** Finance documents, insurance PDFs, and FAQ knowledge content.
+- **Approach:** Combine rule-based preprocessing, keyword retrieval, and semantic embedding retrieval.
+- **Result:** Team competition project that can be referenced as a collaborative financial AI retrieval project.
+
+## System Workflow
+
+```mermaid
+flowchart TD
+    A["Question dataset"] --> B["Category routing"]
+    B --> C["Finance retrieval"]
+    B --> D["Insurance retrieval"]
+    B --> E["FAQ retrieval"]
+
+    F["PDF / text sources"] --> G["OCR and text extraction"]
+    G --> C
+    G --> D
+    F --> E
+
+    C --> H["Keyword extraction + E5 semantic matching"]
+    D --> I["Jieba tokenization + BM25 retrieval"]
+    E --> J["Multilingual E5 FAQ embeddings"]
+
+    H --> K["Retrieved document ID"]
+    I --> K
+    J --> K
+    K --> L["Submission JSON"]
 ```
+
+## Repository Structure
+
+```text
 .
 ├── Model/
-│   ├── insurance.py/      # 金融文件語料庫
-│   ├── finance.py/        # 金融文件語料庫
-│   └── faq.py/            # FAQ文件語料庫
+│   ├── finance.py      # Finance document retrieval with keyword extraction and E5 embeddings
+│   ├── insurance.py    # Insurance document retrieval with Jieba and BM25
+│   └── FAQ.py          # FAQ semantic retrieval with multilingual E5 embeddings
 ├── Preprocess/
-│   └── ocr.py             # PDF預處理
+│   └── ocr.py          # PDF text extraction and OCR helper
 ├── requirements.txt
 └── README.md
 ```
 
-## 檔案說明
+## Technical Stack
 
-### 程式碼
+- Python
+- OpenAI API for keyword extraction in the finance retrieval flow
+- Hugging Face Transformers
+- `intfloat/multilingual-e5-large`
+- PyTorch
+- Jieba
+- BM25
+- PyMuPDF, pdfplumber, pytesseract
 
-- `insurance.py`: 實現保險專用查詢處理，包含同義詞和BM25檢索
-- `finance.py`: 實現基於關鍵字和嵌入的金融文件檢索
-- `faq.py`: 使用E5嵌入實現FAQ文件的語義檢索
-- `ocr.py`: 提供PDF文件文字提取工具，包括OCR功能
+## Setup
 
-
-## 安裝與設置
-
-1. 安裝所需套件：
 ```bash
 pip install -r requirements.txt
 ```
 
-2. 安裝Tesseract OCR：
-- Windows：從 https://github.com/UB-Mannheim/tesseract/wiki 下載並安裝
-- Linux：`sudo apt-get install tesseract-ocr`
-- macOS：`brew install tesseract`
+Copy `.env.example` to `.env` if you want to use the optional local environment variables:
 
-3. 設置環境變數：
 ```bash
-export TESSERACT_PATH="C:\\Program Files\\Tesseract-OCR\\tesseract.exe"  # Windows
-# 或
-export TESSERACT_PATH="/usr/bin/tesseract"  # Linux/macOS
+OPENAI_API_KEY=your_openai_api_key
+TESSERACT_PATH=C:\Program Files\Tesseract-OCR\tesseract.exe
+OCR_INPUT_DIR=path\to\pdf_folder
 ```
 
-## 模型配置
+Tesseract is required only for OCR-based PDF extraction.
 
-### E5嵌入模型
-- 模型：`intfloat/multilingual-e5-large`
-- 最大序列長度：512
-- 運行設備：優先使用CUDA，否則使用CPU
-- 嵌入維度：1024
+## Example Usage
 
-### 檢索參數
-- 文本分塊大小：200字符
-- 嵌入批次大小：8
-- 查詢-關鍵詞權重比：0.5:0.5
+The scripts expect the competition dataset layout, including `questions.json` and category-specific source folders.
 
-## 資源需求
+Finance retrieval:
 
-### 硬體需求
-- 內存：建議最少16GB
-- GPU：建議使用配備至少8GB顯存的NVIDIA GPU以獲得最佳性能
-- 儲存空間：模型權重和文件緩存至少需要10GB空間
-
-### 軟體需求
-- Python 3.8或更高版本
-- CUDA 11.0或更高版本（用於GPU支持）
-- Tesseract OCR 5.0或更高版本
-
-## 使用示例
-
-```python
-# 保險文件檢索
-python Model/insurance.py \
-    --question_path 問題檔案路徑/questions.json \
-    --source_path 源文件路徑/source/docs \
-    --output_path 輸出路徑/output.json
-
-# 金融文件檢索
+```bash
 python Model/finance.py \
-    --question_path 問題檔案路徑/questions.json \
-    --source_path 源文件路徑/source/docs \
-    --output_path 輸出路徑/output.json
-
-# FAQ檢索
-python Model/faq_retrieval.py \
-    --question_path 問題檔案路徑/questions.json \
-    --source_path 源文件路徑/source/docs \
-    --output_path 輸出路徑/output.json
+  --question_path path/to/questions.json \
+  --source_path path/to/source \
+  --output_path path/to/output_finance.json
 ```
 
-## 性能考量
+FAQ retrieval:
 
-- E5模型載入時間：GPU約30秒，CPU約1分鐘
-- 嵌入生成速度：GPU每分鐘約100個文件，CPU每分鐘約20個文件
-- 記憶體使用：基礎約4GB + 每1000個文件約2GB（使用嵌入時）
+```bash
+python Model/FAQ.py \
+  --question_path path/to/questions.json \
+  --source_path path/to/source \
+  --output_path path/to/output_faq.json
+```
 
-## 緩存管理
+Insurance retrieval:
 
-系統實現了以下內容的緩存：
-- FAQ嵌入（faq_embeddings.pkl）
-- 提取的PDF文字
-- 處理後的文件分塊
+```bash
+python Model/insurance.py \
+  --question_path path/to/questions.json \
+  --source_path path/to/source \
+  --output_path path/to/output_insurance.json
+```
 
-如果更新源文件或模型參數，請清除緩存檔案。
+OCR preprocessing:
+
+```bash
+python Preprocess/ocr.py
+```
+
+Set `OCR_INPUT_DIR` before running the OCR helper.
+
+## Notes and Limitations
+
+- This is a competition-oriented prototype, not a deployed application.
+- The dataset is not included in this repository.
+- Some scripts assume the AI CUP dataset folder structure.
+- Large intermediate files such as embeddings, logs, and generated outputs are intentionally ignored.
+- Retrieval performance depends on source document quality, OCR quality, and hardware available for embedding inference.
+
+## Portfolio Framing
+
+This project is best understood as a collaborative financial AI retrieval system. It can support an Applied AI / AI Solutions Engineering portfolio by showing experience with:
+
+- Financial document retrieval
+- Domain-specific QA workflow design
+- OCR and document preprocessing
+- Hybrid retrieval strategies
+- Embedding-based semantic matching
